@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual env
+env/
+venv/
+
+# Model files
+*.bin
+*.gguf
+
+# FAISS + DB
+backend/database/vector_store/
+
+# OS
+.DS_Store
+Thumbs.db
