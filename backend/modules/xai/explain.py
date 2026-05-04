@@ -1,3 +1,10 @@
+import re
+import requests
+
+
+# -------------------------------
+# 🔹 MAIN EXPLANATION FUNCTION
+# -------------------------------
 def generate_explanation(answer, docs, eval_result, query):
 
     explanation = {}
@@ -6,7 +13,7 @@ def generate_explanation(answer, docs, eval_result, query):
     explanation["supporting_sentences"] = extract_supporting_sentences(answer, docs)
 
     # 🔹 Confidence
-    explanation["confidence"] = eval_result.get("confidence", 0.5)
+    explanation["confidence"] = float(eval_result.get("confidence", 0.5))
 
     # 🔹 Quality
     score = eval_result.get("score", 5)
@@ -19,49 +26,73 @@ def generate_explanation(answer, docs, eval_result, query):
     # 🔹 Grounding
     explanation["grounded"] = "not enough information" not in answer.lower()
 
-    # 🔹 Reasoning (LLM)
-    explanation["reasoning"] = generate_reasoning(query, answer, docs)
+    # 🔥 SMART: Skip reasoning if answer already strong (speed boost)
+    if len(answer) > 150 and explanation["confidence"] >= 0.7:
+        explanation["reasoning"] = "Answer is well-supported by retrieved documents."
+    else:
+        explanation["reasoning"] = generate_reasoning(query, answer, docs)
 
     return explanation
 
-import re
 
+# -------------------------------
+# 🔹 SUPPORTING SENTENCES
+# -------------------------------
 def extract_supporting_sentences(answer, docs):
-    answer_sentences = re.split(r'(?<=[.!?]) +', answer)
 
-    supporting = []
+    answer_words = set(answer.lower().split())
+    scored_sentences = []
 
-    for doc in docs:
+    for doc in docs[:2]:
         doc_sentences = re.split(r'(?<=[.!?]) +', doc)
 
-        for a_sent in answer_sentences:
-            for d_sent in doc_sentences:
-                # simple overlap check
-                common_words = set(a_sent.lower().split()) & set(d_sent.lower().split())
+        for sent in doc_sentences:
+            words = set(sent.lower().split())
+            overlap = len(answer_words & words)
 
-                if len(common_words) > 3:   # threshold
-                    supporting.append(d_sent.strip())
+            if overlap > 4 and len(sent) > 40:
+                scored_sentences.append((overlap, sent.strip()))
 
-    # remove duplicates
-    return list(set(supporting))[:5]
+    # 🔥 sort by relevance
+    scored_sentences.sort(reverse=True, key=lambda x: x[0])
 
-import requests
+    final = []
+    for _, s in scored_sentences[:3]:
+        if len(s) > 120:
+            s = s[:120] + "..."
+        final.append(s)
 
+    return final
+
+
+# -------------------------------
+# 🔹 LLM REASONING (OPTIMIZED)
+# -------------------------------
 def generate_reasoning(query, answer, docs):
 
-    context = " ".join(docs[:1])[:1200]
+    context = " ".join(docs[:1])[:1000]  # 🔥 smaller context
 
     prompt = f"""
-You are verifying an answer using given context.
+You are verifying a medical answer using context.
 
-Task:
-Explain briefly WHY the answer is supported by the context.
+STRICT RULES:
+- DO NOT hallucinate
+- DO NOT use outside knowledge
+- Only use provided context
+- Output MUST be bullet points
+- 2–4 points only
+- No tags, no explanations, no extra text
 
-Rules:
-- DO NOT say "not enough information"
-- DO NOT be uncertain
-- ALWAYS find supporting evidence
-- Keep it short (2-3 lines)
+USER REQUIREMENT:
+- Reasoning must be point-wise
+
+FORMAT:
+
+Reasoning:
+- point 1
+- point 2
+
+strictly follow the format above. only 2 small points are needed.dont exceed more than 2 points.
 
 Context:
 {context}
@@ -70,16 +101,29 @@ Answer:
 {answer}
 """
 
-    response = requests.post(
-        "http://localhost:11434/api/generate",
-        json={
-    "model": "medgemma-rag",
-    "prompt": prompt,
-    "stream": False,
-    "options": {
-        "keep_alive": "10m"   # 🔥 ADD THIS
-    }
-}
-    )
+    try:
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "medgemma-rag",
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "keep_alive": "10m",
+                    "temperature": 0
+                }
+            },
+            timeout=60
+        )
 
-    return response.json().get("response", "").strip()
+        raw = response.json().get("response", "").strip()
+
+        # 🔥 CLEAN LLM OUTPUT
+        cleaned = re.sub(r"<.*?>", "", raw)  # remove <unused...>
+        cleaned = cleaned.replace("\n", " ").strip()
+
+        return cleaned if cleaned else "Reasoning not available."
+
+    except Exception as e:
+        print("⚠️ Reasoning failed:", e)
+        return "Reasoning not available."

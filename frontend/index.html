@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Oncology AI Assistant</title>
+    <style>
+        body {
+            background: #0b0f1a;
+            color: white;
+            font-family: Arial;
+            text-align: center;
+        }
+
+        .container {
+            width: 60%;
+            margin: auto;
+            margin-top: 50px;
+        }
+
+        input {
+            width: 70%;
+            padding: 15px;
+            border-radius: 10px;
+            border: none;
+        }
+
+        button {
+            padding: 15px;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+        }
+
+        .thinking {
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0% {opacity: 1;}
+            50% {opacity: 0.3;}
+            100% {opacity: 1;}
+        }
+
+        .card {
+            margin-top: 30px;
+            padding: 20px;
+            background: #111827;
+            border-radius: 15px;
+            text-align: left;
+        }
+
+        .progress-bar {
+            width: 100%;
+            background: #333;
+            border-radius: 10px;
+        }
+
+        .progress {
+            height: 10px;
+            background: #22c55e;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="container">
+    <h1>🚀 Oncology AI Assistant</h1>
+
+    <input id="query" placeholder="Ask a medical question..." />
+    <button onclick="sendQuery()">Send</button>
+
+    <div id="status"></div>
+
+    <div id="output"></div>
+</div>
+
+<script>
+
+async function sendQuery() {
+    let query = document.getElementById("query").value;
+
+    document.getElementById("status").innerHTML =
+        "<p class='thinking'>🤖 AI is thinking...</p>";
+
+    const response = await fetch("http://127.0.0.1:5000/query", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ query })
+    });
+
+    const data = await response.json();
+
+    document.getElementById("status").innerHTML = "";
+
+    document.getElementById("output").innerHTML = `
+        <div class="card">
+            <h3>Answer</h3>
+            <ul>
+                ${formatPoints(data.answer)}
+            </ul>
+
+            <h3>Reasoning</h3>
+            <ul>
+                ${formatPoints(data.reasoning)}
+            </ul>
+
+            <h3>Sources</h3>
+            <ul>
+                ${data.sources.map(s => `<li>${s}</li>`).join("")}
+            </ul>
+
+            <h3>Confidence</h3>
+            <div class="progress-bar">
+                <div class="progress" style="width:${data.confidence * 100}%"></div>
+            </div>
+            <p>${(data.confidence * 100).toFixed(1)}%</p>
+        </div>
+    `;
+}
+
+function formatPoints(text) {
+    return text
+        .split(".")
+        .filter(s => s.trim() !== "")
+        .map(s => `<li>${s}</li>`)
+        .join("");
+}
+
+</script>
+
+</body>
+</html>

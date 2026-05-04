@@ -6,16 +6,34 @@ def generate_answer(agent_output):
     context = agent_output["context"][0][:800]
 
     prompt = f"""
-You are a medical AI assistant.
+You are an oncology AI assistant.
 
 Query Type: {intent}
 
-- If factual → be concise
-- If comparison → give structured comparison
-- If exploratory → explain in detail
+STRICT RULES:
+- Answer ONLY using the given context
+- DO NOT hallucinate or use outside knowledge
+- If answer is not in context → say "Not enough information"
+- DO NOT include thinking text, reasoning tags, or <unused*> tokens
 
-Answer ONLY using the given context.
-If the answer is not in the context, say "Not enough information".
+USER REQUIREMENT:
+- Answer MUST be in bullet points
+- Keep points short and clear
+- 3–6 points maximum
+
+FORMAT BASED ON QUERY:
+
+If factual:
+- point 1
+- point 2
+
+If comparison:
+- Feature 1: ...
+- Feature 2: ...
+
+If exploratory:
+- Explanation point 1
+- Explanation point 2
 
 Context:
 {context}
@@ -33,6 +51,8 @@ Answer:
     "prompt": prompt,
     "stream": False,
     "options": {
+        "temperature": 0,
+        "top_p": 0.9,
         "keep_alive": "10m"   # 🔥 ADD THIS
     }
 }
