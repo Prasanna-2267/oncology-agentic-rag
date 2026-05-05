@@ -17,3 +17,18 @@ backend/database/vector_store/
 # OS
 .DS_Store
 Thumbs.db
+
+# Data
+backend/data/
+backend/database/
+
+# Vector stores
+*.pkl
+*.index
+
+# Large files
+*.pdf
+
+# Python
+__pycache__/
+*.pyc
