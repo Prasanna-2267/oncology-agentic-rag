@@ -2,6 +2,7 @@ from sentence_transformers import SentenceTransformer
 
 _model = None
 
+
 def get_model():
     global _model
     if _model is None:
@@ -12,12 +13,17 @@ def get_model():
 
 def get_mrl_embedding(texts, dim=128):
     model = get_model()
-    emb = model.encode(texts)
+
+    # 🔥 Added batching for performance
+    emb = model.encode(
+        texts,
+        batch_size=32,
+        show_progress_bar=False
+    )
+
     return emb[:, :dim]
 
 
 def get_dynamic_mrl_embedding(texts, intent="factual"):
-    model = get_model()
-    dim = 128
-    emb = model.encode(texts)
-    return emb[:, :dim]
+    # 🔥 keep same behavior but cleaner
+    return get_mrl_embedding(texts, dim=128)

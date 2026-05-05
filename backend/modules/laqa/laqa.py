@@ -1,7 +1,34 @@
 import requests
 import json
+import re
 
+SESSION = requests.Session()
+
+
+# -------------------------------
+# 🔹 Robust JSON Extraction
+# -------------------------------
+def extract_json(output):
+    """
+    Extract valid JSON from messy LLM output
+    """
+    matches = re.findall(r"\{.*?\}", output, re.DOTALL)
+
+    for m in matches:
+        try:
+            return json.loads(m)
+        except:
+            continue
+
+    raise ValueError("No valid JSON found")
+
+
+# -------------------------------
+# 🔹 Query Processing (LAQA)
+# -------------------------------
 def process_query(query):
+
+    query = query.strip()
 
     prompt = f"""
 You are a query analysis system.
@@ -34,55 +61,71 @@ Query:
 """
 
     try:
-        response = requests.post(
+        response = SESSION.post(
             "http://localhost:11434/api/generate",
             json={
-    "model": "medgemma-rag",
-    "prompt": prompt,
-    "stream": False,
-    "options": {
-        "keep_alive": "10m"   # 🔥 ADD THIS
-    }
-},
+                "model": "medgemma-rag",
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0,
+                    "keep_alive": "10m"
+                }
+            },
             timeout=120
         )
 
         data = response.json()
-
         output = data.get("response", "").strip()
 
-        # 🧠 Extract JSON safely (handles messy LLM output)
-        start = output.find("{")
-        end = output.rfind("}") + 1
+        print("\n🧠 LAQA RAW OUTPUT:\n", output)
 
-        if start != -1 and end != -1:
-            json_str = output[start:end]
-            parsed = json.loads(json_str)
-        else:
-            raise ValueError("No JSON found in response")
+        # 🔥 Use robust extractor
+        parsed = extract_json(output)
 
     except Exception as e:
+        print("⚠️ LAQA fallback:", e)
 
-        # 🔁 fallback (system should never break)
         parsed = {
             "intent": "factual",
             "keywords": [],
             "expanded_query": query
         }
 
-    # 🔹 Retrieval strategy mapping
+    # -------------------------------
+    # 🔹 Normalize + Improve Query
+    # -------------------------------
     intent = parsed.get("intent", "factual")
+    expanded_query = parsed.get("expanded_query", query)
 
+    # 🔥 Clean query
+    expanded_query = expanded_query.lower().strip()
+
+    # 🔥 Improve weak queries (VERY IMPORTANT)
+    if len(expanded_query.split()) <= 3:
+        expanded_query += " symptoms causes diagnosis treatment"
+
+    # 🔥 Handle spelling issues lightly
+    if "symtoms" in expanded_query:
+        expanded_query = expanded_query.replace("symtoms", "symptoms")
+
+    parsed["expanded_query"] = expanded_query
+
+    # -------------------------------
+    # 🔹 Dynamic retrieval_k
+    # -------------------------------
     if intent == "exploratory":
-        parsed["retrieval_k"] = 6
+        parsed["retrieval_k"] = 7
     elif intent == "comparison":
-        parsed["retrieval_k"] = 5
+        parsed["retrieval_k"] = 6
     else:
         parsed["retrieval_k"] = 5
 
     parsed["original_query"] = query
 
-    # 🔍 Debug output
+    # -------------------------------
+    # 🔹 Debug
+    # -------------------------------
     print("LAQA PARSED:", parsed)
 
     return parsed

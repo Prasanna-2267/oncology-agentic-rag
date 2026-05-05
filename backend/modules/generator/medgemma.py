@@ -1,9 +1,15 @@
 import requests
 
+SESSION = requests.Session()
+
+
 def generate_answer(agent_output):
     query = agent_output["query"]["expanded_query"]
-    intent = agent_output["query"].get("intent", "factual")  # 🔥 new
-    context = agent_output["context"][0][:800]
+    intent = agent_output["query"].get("intent", "factual")
+
+    # 🔥 Use top 2 chunks (BIG improvement)
+    docs = agent_output["context"]
+    context = "\n".join(docs[:2])[:1200]
 
     prompt = f"""
 You are an oncology AI assistant.
@@ -17,7 +23,9 @@ STRICT RULES:
 - DO NOT include thinking text, reasoning tags, or <unused*> tokens
 
 USER REQUIREMENT:
-- Answer MUST be in bullet points
+- Answer MUST directly answer the question
+- Do NOT include unrelated info (e.g., treatment if question asks symptoms)
+- Keep strictly relevant
 - Keep points short and clear
 - 3–6 points maximum
 
@@ -44,18 +52,25 @@ Question:
 Answer:
 """
 
-    response = requests.post(
-        "http://localhost:11434/api/generate",
-        json={
-    "model": "medgemma-rag",
-    "prompt": prompt,
-    "stream": False,
-    "options": {
-        "temperature": 0,
-        "top_p": 0.9,
-        "keep_alive": "10m"   # 🔥 ADD THIS
-    }
-}
-    )
+    try:
+        response = SESSION.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "medgemma-rag",
+                "prompt": prompt,
+                "stream": False,
+                "options": {
+                    "temperature": 0,
+                    "top_p": 0.9,
+                    "num_predict": 200,
+                    "keep_alive": "10m"
+                }
+            },
+            timeout=60
+        )
 
-    return response.json()["response"]
+        return response.json().get("response", "").strip()
+
+    except Exception as e:
+        print("❌ Generator error:", e)
+        return "Not enough information"

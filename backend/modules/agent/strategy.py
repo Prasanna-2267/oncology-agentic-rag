@@ -1,16 +1,22 @@
 def choose_strategy(eval_result, attempt):
+    """
+    Decide next action based on evaluation result
+    """
 
     score = eval_result.get("score", 5)
     needs_retry = eval_result.get("needs_retry", True)
 
-    # 🔥 Highest priority → retry flag
+    # ✅ If evaluator says it's good → accept immediately
     if not needs_retry:
         return "accept"
 
-    # Otherwise decide strategy
+    # 🔥 Hard fail → query likely weak
     if score < 4:
         return "expand_query"
-    elif score < 7:
+
+    # 🔥 Medium → retrieval issue
+    elif score < 8:
         return "increase_k"
-    else:
-        return "accept"
+
+    # 🔥 High but flagged retry → still accept
+    return "accept"

@@ -3,10 +3,19 @@ import json
 import re
 
 PHI3MINI_URL = "http://localhost:11434/api/generate"
-EVAL_MODEL = "phi3:mini"   # 🔥 IMPORTANT: use llama3 (NOT medgemma)
+EVAL_MODEL = "phi3:mini"
 
 
 def evaluate_answer(query, context, answer):
+    """
+    Evaluate answer quality using LLM
+    Returns:
+    {
+        score: 0-10,
+        confidence: 0-1,
+        needs_retry: bool
+    }
+    """
 
     prompt = f"""
 You are an evaluation system.
@@ -40,9 +49,9 @@ Answer: {answer}
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0,     # 🔥 deterministic
-                    "num_predict": 80,     # 🔥 short output
-                    "keep_alive": "10m"   # 🔥 ADD THIS
+                    "temperature": 0,
+                    "num_predict": 80,
+                    "keep_alive": "10m"
                 }
             },
             timeout=60
@@ -53,41 +62,56 @@ Answer: {answer}
 
         print("\n🧠 EVAL RAW OUTPUT:\n", raw_output)
 
-        # 🔥 Extract JSON safely
-        match = re.search(r'\{.*?\}', raw_output, re.DOTALL)
+        # -----------------------------
+        # 🔹 Extract JSON safely
+        # -----------------------------
+        match = re.search(r"\{.*?\}", raw_output, re.DOTALL)
 
-        if match:
-            json_str = match.group(0)
-            parsed = json.loads(json_str)
+        if not match:
+            raise ValueError("No JSON found")
 
-            # 🛡️ Safety normalization
-            score = parsed.get("score")
-            confidence = parsed.get("confidence")
-            needs_retry = parsed.get("needs_retry")
+        json_str = match.group(0)
 
-            # 🔥 Handle nulls safely
-            if score is None:
-                score = 5
-            if confidence is None:
-                confidence = 0.5
-            if needs_retry is None:
-                needs_retry = True
+        # -----------------------------
+        # 🔹 Parse JSON
+        # -----------------------------
+        parsed = json.loads(json_str)
 
-            return {
-                "score": int(score),
-                "confidence": float(confidence),
-                "needs_retry": bool(needs_retry)
-            }
+        score = parsed.get("score", 5)
+        confidence = parsed.get("confidence", 0.5)
+        needs_retry = parsed.get("needs_retry", True)
 
-            return parsed
+        # -----------------------------
+        # 🔹 Normalize values
+        # -----------------------------
+        try:
+            score = int(score)
+        except:
+            score = 5
 
-        else:
-            raise ValueError("No JSON found in output")
+        try:
+            confidence = float(confidence)
+        except:
+            confidence = 0.5
+
+        needs_retry = bool(needs_retry)
+
+        # clamp values
+        score = max(0, min(score, 10))
+        confidence = max(0.0, min(confidence, 1.0))
+
+        return {
+            "score": score,
+            "confidence": confidence,
+            "needs_retry": needs_retry
+        }
 
     except Exception as e:
         print("❌ EVAL ERROR:", e)
 
-        # 🔥 SMART fallback (not dumb fallback anymore)
+        # -----------------------------
+        # 🔹 Smart fallback
+        # -----------------------------
         answer_lower = answer.lower()
 
         if "not enough information" in answer_lower:
@@ -97,7 +121,14 @@ Answer: {answer}
                 "needs_retry": True
             }
 
-        # fallback assume medium quality
+        if len(answer.strip()) < 50:
+            return {
+                "score": 3,
+                "confidence": 0.4,
+                "needs_retry": True
+            }
+
+        # medium fallback
         return {
             "score": 5,
             "confidence": 0.5,

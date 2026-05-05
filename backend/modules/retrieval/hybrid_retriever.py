@@ -2,7 +2,7 @@ import faiss
 import pickle
 import numpy as np
 
-# 🔹 Load once (GOOD - keep this)
+# 🔹 Load once
 index = faiss.read_index("backend/database/vector_store/faiss.index")
 
 with open("backend/database/vector_store/docs.pkl", "rb") as f:
@@ -11,29 +11,38 @@ with open("backend/database/vector_store/docs.pkl", "rb") as f:
 with open("backend/database/vector_store/bm25.pkl", "rb") as f:
     bm25 = pickle.load(f)
 
+with open("backend/database/vector_store/ids.pkl", "rb") as f:
+    ids = pickle.load(f)
+
+with open("backend/database/vector_store/id_to_text.pkl", "rb") as f:
+    id_to_text = pickle.load(f)
+
 
 # -------------------------------
 # 🔹 Utility
 # -------------------------------
 def normalize_scores(scores):
-    scores = np.array(scores)
-    if scores.max() == scores.min():
+    scores = np.array(scores, dtype=np.float32)
+    if len(scores) == 0:
         return scores
+    if scores.max() == scores.min():
+        return np.ones_like(scores)
     return (scores - scores.min()) / (scores.max() - scores.min())
 
 
 # -------------------------------
-# 🔹 Hybrid Retrieval (Optimized)
+# 🔹 Hybrid Retrieval (Improved)
 # -------------------------------
 from modules.embeddings.mrl_embeddings import get_dynamic_mrl_embedding
+
 
 def hybrid_search(laqa_output, _):
 
     query = laqa_output["expanded_query"]
     k = laqa_output.get("retrieval_k", 5)
 
-    # 🔥 IMPORT HERE (avoid reload issues)
-
+    # 🔥 Increase candidate pool (BIG improvement)
+    candidate_k = min(max(k * 3, 10), 20)
 
     # -------------------------------
     # 🔹 Dense Retrieval (FAISS)
@@ -43,35 +52,43 @@ def hybrid_search(laqa_output, _):
         intent=laqa_output.get("intent", "factual")
     )
 
-    D, I = index.search(query_vec, k=k)
+    D, I = index.search(query_vec, k=candidate_k)
 
-    dense_docs = [documents[i] for i in I[0]]
-    dense_scores = normalize_scores(-D[0])  # smaller distance = better
+    dense_ids = [ids[i] for i in I[0]]
+    dense_scores = normalize_scores(-D[0])  # smaller distance → better
 
     # -------------------------------
     # 🔹 Sparse Retrieval (BM25)
     # -------------------------------
-    tokenized_query = query.lower().split()
+    import re
+
+    def tokenize(text):
+        text = text.lower()
+        text = re.sub(r'[^a-z0-9 ]', '', text)
+        return text.split()
+    tokenized_query = tokenize(query)
 
     bm25_scores = bm25.get_scores(tokenized_query)
-    top_idx = np.argsort(bm25_scores)[-k:]
+    top_idx = np.argsort(bm25_scores)[-candidate_k:]
 
-    sparse_docs = [documents[i] for i in top_idx]
+    sparse_ids = [ids[i] for i in top_idx]
     sparse_scores = normalize_scores([bm25_scores[i] for i in top_idx])
 
     # -------------------------------
-    # 🔹 Score Fusion (FAST + CLEAN)
+    # 🔹 Fusion (Stable + Weighted)
     # -------------------------------
     doc_score_map = {}
 
-    for doc, score in zip(dense_docs, dense_scores):
-        doc_score_map[doc] = doc_score_map.get(doc, 0) + 0.6 * score
+    # Dense contribution
+    for doc_id, score in zip(dense_ids, dense_scores):
+        doc_score_map[doc_id] = doc_score_map.get(doc_id, 0) + 0.6 * score
 
-    for doc, score in zip(sparse_docs, sparse_scores):
-        doc_score_map[doc] = doc_score_map.get(doc, 0) + 0.4 * score
+    # Sparse contribution
+    for doc_id, score in zip(sparse_ids, sparse_scores):
+        doc_score_map[doc_id] = doc_score_map.get(doc_id, 0) + 0.4 * score
 
     # -------------------------------
-    # 🔹 Remove duplicates + rank
+    # 🔹 Rank + Deduplicate
     # -------------------------------
     ranked_docs = sorted(
         doc_score_map.items(),
@@ -79,14 +96,23 @@ def hybrid_search(laqa_output, _):
         reverse=True
     )
 
-    # 🔥 LIMIT to top 3 (faster + cleaner context)
-    final_docs = [doc for doc, _ in ranked_docs[:3]]
+    # 🔥 Final top-k (clean context)
+    final_ids = [doc_id for doc_id, _ in ranked_docs[:k]]
+
+    # 🔥 Convert to text
+    final_texts = [id_to_text.get(doc_id, "") for doc_id in final_ids]
 
     # -------------------------------
     # 🔹 Debug (optional)
     # -------------------------------
     print("\n📄 Top Retrieved Docs:")
-    for d in final_docs:
-        print("-", d[:120], "...")
+    for i, d in enumerate(final_texts):
+        print(f"{i+1}.", d[:120], "...")
 
-    return final_docs
+    # -------------------------------
+    # 🔹 Return
+    # -------------------------------
+    return {
+        "texts": final_texts,
+        "ids": final_ids
+    }
