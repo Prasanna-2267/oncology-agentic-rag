@@ -1,134 +1,1024 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Oncology AI Assistant</title>
-    <style>
-        body {
-            background: #0b0f1a;
-            color: white;
-            font-family: Arial;
-            text-align: center;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Medical AI Assistant</title>
 
-        .container {
-            width: 60%;
-            margin: auto;
-            margin-top: 50px;
-        }
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-        input {
-            width: 70%;
-            padding: 15px;
-            border-radius: 10px;
-            border: none;
-        }
+<style>
 
-        button {
-            padding: 15px;
-            background: #2563eb;
-            color: white;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-        }
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
 
-        .thinking {
-            animation: blink 1s infinite;
-        }
+body{
+    font-family:'Inter',sans-serif;
+    background:#0f172a;
+    height:100vh;
+    overflow:hidden;
+    color:white;
+}
 
-        @keyframes blink {
-            0% {opacity: 1;}
-            50% {opacity: 0.3;}
-            100% {opacity: 1;}
-        }
+.app{
+    display:flex;
+    height:100vh;
+    width:100%;
+}
 
-        .card {
-            margin-top: 30px;
-            padding: 20px;
-            background: #111827;
-            border-radius: 15px;
-            text-align: left;
-        }
+/* SIDEBAR */
 
-        .progress-bar {
-            width: 100%;
-            background: #333;
-            border-radius: 10px;
-        }
+.sidebar{
+    width:280px;
+    background:#020817;
+    border-right:1px solid rgba(255,255,255,0.06);
+    display:flex;
+    flex-direction:column;
+    padding:20px;
+}
 
-        .progress {
-            height: 10px;
-            background: #22c55e;
-            border-radius: 10px;
-        }
-    </style>
+.logo{
+    display:flex;
+    align-items:center;
+    gap:12px;
+    margin-bottom:25px;
+}
+
+.logo-circle{
+    width:52px;
+    height:52px;
+    border-radius:14px;
+    background:#2563eb;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    font-size:24px;
+}
+
+.logo h2{
+    font-size:32px;
+}
+
+.new-chat{
+    background:#2563eb;
+    border:none;
+    color:white;
+    padding:16px;
+    border-radius:16px;
+    cursor:pointer;
+    font-size:16px;
+    margin-bottom:28px;
+}
+
+.new-chat:hover{
+    background:#1d4ed8;
+}
+
+.sidebar-section{
+    color:#94a3b8;
+    font-size:13px;
+    margin-bottom:14px;
+    letter-spacing:2px;
+}
+
+.chat-history{
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    overflow-y:auto;
+}
+
+.history-item{
+    padding:16px;
+    border-radius:14px;
+    background:#0f172a;
+    cursor:pointer;
+    transition:0.2s;
+    color:#e2e8f0;
+    line-height:1.5;
+}
+
+.history-item:hover{
+    background:#1e293b;
+}
+
+/* MAIN */
+
+.main{
+    flex:1;
+    display:flex;
+    flex-direction:column;
+}
+
+.topbar{
+    height:85px;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 35px;
+    background:#111827;
+}
+
+.topbar h1{
+    font-size:24px;
+}
+
+.badge{
+    background:#2563eb;
+    padding:10px 18px;
+    border-radius:999px;
+    font-size:14px;
+}
+
+/* CHAT */
+
+.chat-area{
+    flex:1;
+    overflow-y:auto;
+    padding:40px 0 120px;
+}
+
+.chat-wrapper{
+    width:100%;
+    max-width:900px;
+    margin:auto;
+}
+
+.message-row{
+    display:flex;
+    gap:18px;
+    padding:28px 20px;
+    animation:fadeIn 0.3s ease;
+}
+
+.message-row.user{
+    justify-content:flex-end;
+}
+
+.message-row.user .message-content{
+    max-width:70%;
+    text-align:right;
+    order:1;
+}
+
+.message-row.user .avatar{
+    order:2;
+}
+
+.message-row.ai{
+    justify-content:flex-start;
+}
+
+@keyframes fadeIn{
+    from{
+        opacity:0;
+        transform:translateY(10px);
+    }
+    to{
+        opacity:1;
+        transform:translateY(0);
+    }
+}
+
+.avatar{
+    min-width:45px;
+    height:45px;
+    border-radius:14px;
+    background:#2563eb;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    font-size:20px;
+}
+
+.message-content{
+    flex:1;
+}
+
+.message-title{
+    font-weight:600;
+    margin-bottom:14px;
+    color:#60a5fa;
+    font-size:20px;
+}
+
+.answer-text,
+.reasoning-text{
+    line-height:1.9;
+    color:#f1f5f9;
+    font-size:17px;
+}
+
+.reasoning-box,
+.bottom-section{
+    margin-top:28px;
+    opacity:0;
+    transform:translateY(10px);
+    transition:0.4s ease;
+}
+
+.reasoning-box.show,
+.bottom-section.show{
+    opacity:1;
+    transform:translateY(0);
+}
+
+.bottom-grid{
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:20px;
+}
+
+.confidence-box{
+    flex:1;
+}
+
+.progress-bar{
+    width:100%;
+    height:12px;
+    background:#1e293b;
+    border-radius:999px;
+    overflow:hidden;
+    margin-top:12px;
+}
+
+.progress{
+    height:100%;
+    background:linear-gradient(90deg,#22c55e,#3b82f6);
+}
+
+.confidence-text{
+    margin-top:12px;
+    color:#cbd5e1;
+}
+
+.sources-btn{
+    background:#1e293b;
+    border:1px solid rgba(255,255,255,0.08);
+    color:white;
+    padding:12px 18px;
+    border-radius:12px;
+    cursor:pointer;
+}
+
+.sources-container{
+    display:none;
+    margin-top:16px;
+}
+
+.source-card{
+    background:#111827;
+    border:1px solid rgba(255,255,255,0.06);
+    border-radius:14px;
+    padding:16px;
+    margin-bottom:12px;
+}
+
+.source-title{
+    color:#60a5fa;
+    margin-bottom:8px;
+    font-weight:600;
+}
+
+.source-text{
+    color:#cbd5e1;
+    line-height:1.7;
+    font-size:14px;
+}
+
+/* INPUT */
+
+.input-area{
+    position:fixed;
+    bottom:0;
+    left:280px;
+    right:0;
+    padding:24px;
+    background:#111827;
+    border-top:1px solid rgba(255,255,255,0.06);
+}
+
+.input-wrapper{
+    max-width:900px;
+    margin:auto;
+    display:flex;
+    gap:14px;
+}
+
+input{
+    flex:1;
+
+    background:#1e293b;
+
+    border:1px solid rgba(255,255,255,0.08);
+
+    color:white;
+
+    padding:18px;
+
+    border-radius:18px;
+
+    font-size:16px;
+
+    outline:none;
+
+    transition:none;
+
+    caret-color:white;
+
+    box-shadow:none;
+}
+
+input:focus,
+input:active,
+input:hover{
+
+    background:#1e293b;
+
+    border:1px solid rgba(255,255,255,0.08);
+
+    outline:none;
+
+    box-shadow:none;
+
+    color:white;
+}
+
+.send-btn{
+    width:72px;
+    border:none;
+    background:#2563eb;
+    color:white;
+    border-radius:18px;
+    cursor:pointer;
+    font-size:24px;
+}
+
+.send-btn:hover{
+    background:#1d4ed8;
+}
+
+.thinking{
+    color:#60a5fa;
+    animation:pulse 1s infinite;
+}
+
+@keyframes pulse{
+    0%{opacity:1;}
+    50%{opacity:0.4;}
+    100%{opacity:1;}
+}
+
+</style>
 </head>
 
 <body>
 
-<div class="container">
-    <h1>🚀 Oncology AI Assistant</h1>
+<div class="app">
 
-    <input id="query" placeholder="Ask a medical question..." />
-    <button onclick="sendQuery()">Send</button>
+<div class="sidebar">
 
-    <div id="status"></div>
+    <div class="logo">
+        <h2>MedGPT</h2>
+    </div>
 
-    <div id="output"></div>
+    <button class="new-chat">
+        + New Medical Chat
+    </button>
+
+    <div class="sidebar-section">
+        RECENT CHATS
+    </div>
+
+    <div class="chat-history"></div>
+
+</div>
+
+<div class="main">
+
+    <div class="topbar">
+        <h1>Medical AI Assistant</h1>
+
+        <div class="badge">
+            Oncology RAG System
+        </div>
+    </div>
+
+    <div class="chat-area" id="chatArea">
+
+        <div class="chat-wrapper" id="chatWrapper">
+
+            <div class="message-row ai">
+
+                <div class="message-content">
+
+                    <div class="message-title">
+                        Medical Assistant
+                    </div>
+
+                    <div class="answer-text">
+                        Hello! I'm your oncology AI assistant.
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+    <div class="input-area">
+
+        <div class="input-wrapper">
+
+            <input
+                id="query"
+                placeholder="Ask a medical question..."
+            >
+
+            <button
+                class="send-btn"
+                onclick="sendQuery()">
+
+                ➤
+
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
 </div>
 
 <script>
 
-async function sendQuery() {
-    let query = document.getElementById("query").value;
+let currentChatId = null;
+let allChats = {};
 
-    document.getElementById("status").innerHTML =
-        "<p class='thinking'>🤖 AI is thinking...</p>";
+window.onload = () => {
+    loadChats();
+};
 
-    const response = await fetch("http://127.0.0.1:5000/query", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ query })
-    });
+document.querySelector('.new-chat')
+.addEventListener('click', () => {
 
-    const data = await response.json();
+    currentChatId = null;
 
-    document.getElementById("status").innerHTML = "";
+    document.getElementById(
+        'chatWrapper'
+    ).innerHTML = `
+    
+        <div class="message-row ai">
 
-    document.getElementById("output").innerHTML = `
-        <div class="card">
-            <h3>Answer</h3>
-            <ul>
-                ${formatPoints(data.answer)}
-            </ul>
+            <div class="message-content">
 
-            <h3>Reasoning</h3>
-            <ul>
-                ${formatPoints(data.reasoning)}
-            </ul>
+                <div class="message-title">
+                    Medical Assistant
+                </div>
 
-            <h3>Sources</h3>
-            <ul>
-                ${data.sources.map(s => `<li>${s}</li>`).join("")}
-            </ul>
+                <div class="answer-text">
+                    Hello! I'm your oncology AI assistant.
+                </div>
 
-            <h3>Confidence</h3>
-            <div class="progress-bar">
-                <div class="progress" style="width:${data.confidence * 100}%"></div>
             </div>
-            <p>${(data.confidence * 100).toFixed(1)}%</p>
+
         </div>
+
+    `;
+});
+async function sendQuery(){
+
+    const inputBox =
+        document.getElementById('query');
+
+    const sendButton =
+        document.querySelector('.send-btn');
+
+    const query =
+        inputBox.value.trim();
+
+    if(!query) return;
+
+    /* DISABLE INPUT */
+
+    inputBox.disabled = true;
+    sendButton.disabled = true;
+
+    inputBox.style.opacity = "0.6";
+    sendButton.style.opacity = "0.6";
+    sendButton.style.cursor = "not-allowed";
+
+    const chatWrapper =
+        document.getElementById('chatWrapper');
+
+    chatWrapper.innerHTML += `
+
+        <div class="message-row user">
+
+            <div class="message-content">
+
+                <div class="message-title">
+                    You
+                </div>
+
+                <div class="answer-text">
+                    ${query}
+                </div>
+
+            </div>
+
+        </div>
+
+        <div class="message-row ai" id="ai-thinking">
+
+            <div class="message-content">
+
+                <div class="message-title">
+                    Medical Assistant
+                </div>
+
+                <div class="thinking">
+                    AI is thinking...
+                </div>
+
+            </div>
+
+        </div>
+
+    `;
+
+    inputBox.value = '';
+
+    scrollBottom();
+
+    try{
+
+        const response = await fetch(
+            'http://127.0.0.1:5000/query',
+            {
+                method:'POST',
+                headers:{
+                    'Content-Type':'application/json'
+                },
+                body:JSON.stringify({ query })
+            }
+        );
+
+        const data =
+            await response.json();
+
+        document
+            .getElementById(
+                'ai-thinking'
+            )
+            .remove();
+
+        const messageHTML =
+            createAIMessage(data);
+
+        chatWrapper.innerHTML +=
+            messageHTML;
+
+        saveRecentChat(query,data);
+
+        scrollBottom();
+
+        animateLatestMessage(data);
+
+    }catch(error){
+
+        console.log(error);
+
+    }finally{
+
+        /* ENABLE AGAIN */
+
+        inputBox.disabled = false;
+        sendButton.disabled = false;
+
+        inputBox.style.opacity = "1";
+        sendButton.style.opacity = "1";
+        sendButton.style.cursor = "pointer";
+
+        inputBox.focus();
+    }
+}
+
+function animateLatestMessage(data){
+
+    const latestAnswer =
+        document.querySelectorAll(
+            '.typed-answer'
+        );
+
+    const last =
+        latestAnswer[
+            latestAnswer.length - 1
+        ];
+
+    typeText(
+        data.answer,
+        last.id,
+        () => {
+
+            const latestReasoning =
+                document.querySelectorAll(
+                    '.reasoning-box'
+                );
+
+            const latestReasoningText =
+                document.querySelectorAll(
+                    '.reasoning-text'
+                );
+
+            const latestBottom =
+                document.querySelectorAll(
+                    '.bottom-section'
+                );
+
+            const reasoningBox =
+                latestReasoning[
+                    latestReasoning.length - 1
+                ];
+
+            const reasoningText =
+                latestReasoningText[
+                    latestReasoningText.length - 1
+                ];
+
+            const bottomSection =
+                latestBottom[
+                    latestBottom.length - 1
+                ];
+
+            reasoningBox.classList.add('show');
+
+            typeText(
+                data.reasoning,
+                reasoningText.id,
+                () => {
+
+                    bottomSection
+                    .classList.add('show');
+                }
+            );
+        }
+    );
+}
+
+function createAIMessage(data){
+
+    const unique = Date.now();
+
+    return `
+
+        <div class="message-row ai">
+
+            <div class="message-content">
+
+                <div class="message-title">
+                    Medical Assistant
+                </div>
+
+                <div
+                    class="answer-text typed-answer"
+                    id="typed-answer-${unique}">
+                </div>
+
+                <div
+                    class="reasoning-box"
+                    id="reasoning-box-${unique}">
+
+                    <div class="message-title">
+                        🧠 Reasoning
+                    </div>
+
+                    <div
+                        class="reasoning-text"
+                        id="typed-reasoning-${unique}">
+                    </div>
+
+                </div>
+
+                <div
+                    class="bottom-section"
+                    id="bottom-section-${unique}">
+
+                    <div class="bottom-grid">
+
+                        <div class="confidence-box">
+
+                            <div class="message-title">
+                                📈 Confidence
+                            </div>
+
+                            <div class="progress-bar">
+
+                                <div
+                                    class="progress"
+                                    style="width:${data.confidence * 100}%">
+                                </div>
+
+                            </div>
+
+                            <div class="confidence-text">
+
+                                ${(data.confidence * 100)
+                                .toFixed(1)}% Confidence
+
+                            </div>
+
+                        </div>
+
+                        <div>
+
+                            <button
+                                class="sources-btn"
+                                onclick="toggleSources(this)">
+
+                                📚 Sources ▼
+
+                            </button>
+
+                            <div class="sources-container">
+
+                                ${formatSources(
+                                    data.source_texts ||
+                                    data.sources
+                                )}
+
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
     `;
 }
 
-function formatPoints(text) {
-    return text
-        .split(".")
-        .filter(s => s.trim() !== "")
-        .map(s => `<li>${s}</li>`)
-        .join("");
+function saveRecentChat(query,response){
+
+    if(!currentChatId){
+
+        currentChatId =
+            'chat_' + Date.now();
+
+        allChats[currentChatId] = {
+            title: query,
+            messages:[]
+        };
+    }
+
+    allChats[currentChatId]
+    .messages.push({
+        query,
+        response
+    });
+
+    sessionStorage.setItem(
+        'all_medical_chats',
+        JSON.stringify(allChats)
+    );
+
+    loadChats();
+}
+
+function loadChats(){
+
+    const container =
+        document.querySelector('.chat-history');
+
+    allChats = JSON.parse(
+        sessionStorage.getItem(
+            'all_medical_chats'
+        ) || '{}'
+    );
+
+    container.innerHTML = '';
+
+    const keys =
+        Object.keys(allChats).reverse();
+
+    if(keys.length === 0){
+
+        container.innerHTML = `
+            <div class="history-item">
+                No recent chats
+            </div>
+        `;
+
+        return;
+    }
+
+    keys.forEach(chatId => {
+
+        const chat = allChats[chatId];
+
+        container.innerHTML += `
+
+            <div
+                class="history-item"
+                onclick="openRecentChat('${chatId}')">
+
+                ${chat.title}
+
+            </div>
+
+        `;
+    });
+}
+
+function openRecentChat(chatId){
+
+    const chats = JSON.parse(
+        sessionStorage.getItem(
+            'all_medical_chats'
+        ) || '{}'
+    );
+
+    const chat = chats[chatId];
+
+    if(!chat) return;
+
+    currentChatId = chatId;
+
+    const chatWrapper =
+        document.getElementById('chatWrapper');
+
+    chatWrapper.innerHTML = '';
+
+    chat.messages.forEach(msg => {
+
+        chatWrapper.innerHTML += `
+
+            <div class="message-row user">
+
+                <div class="message-content">
+
+                    <div class="message-title">
+                        You
+                    </div>
+
+                    <div class="answer-text">
+                        ${msg.query}
+                    </div>
+
+                </div>
+
+            </div>
+
+            ${createAIMessage(msg.response)}
+
+        `;
+    });
+
+    const typedAnswers =
+        document.querySelectorAll(
+            '.typed-answer'
+        );
+
+    const reasoningBoxes =
+        document.querySelectorAll(
+            '.reasoning-box'
+        );
+
+    const reasoningTexts =
+        document.querySelectorAll(
+            '.reasoning-text'
+        );
+
+    const bottomSections =
+        document.querySelectorAll(
+            '.bottom-section'
+        );
+
+    chat.messages.forEach((msg,index) => {
+
+        typedAnswers[index].innerHTML =
+            msg.response.answer;
+
+        reasoningBoxes[index]
+            .classList.add('show');
+
+        reasoningTexts[index]
+            .innerHTML =
+            msg.response.reasoning;
+
+        bottomSections[index]
+            .classList.add('show');
+    });
+
+    scrollBottom();
+}
+
+function typeText(text,id,callback){
+
+    const element =
+        document.getElementById(id);
+
+    let i = 0;
+
+    element.innerHTML = '';
+
+    function typing(){
+
+        if(i < text.length){
+
+            if(text.charAt(i) === '\n'){
+                element.innerHTML += '<br>';
+            }
+            else{
+                element.innerHTML +=
+                    text.charAt(i);
+            }
+
+            i++;
+
+            setTimeout(typing,10);
+        }
+        else{
+
+            if(callback) callback();
+        }
+    }
+
+    typing();
+}
+
+function toggleSources(button){
+
+    const container =
+        button.nextElementSibling;
+
+    if(container.style.display === 'block'){
+
+        container.style.display = 'none';
+
+        button.innerHTML =
+            '📚 Sources ▼';
+    }
+    else{
+
+        container.style.display =
+            'block';
+
+        button.innerHTML =
+            '📚 Sources ▲';
+    }
+}
+
+function formatSources(sources){
+
+    if(!sources || sources.length === 0){
+
+        return `
+            <div class="source-card">
+                <div class="source-text">
+                    No sources available.
+                </div>
+            </div>
+        `;
+    }
+
+    return sources.map(
+        (source,index) => `
+
+        <div class="source-card">
+
+            <div class="source-title">
+                Source ${index + 1}
+            </div>
+
+            <div class="source-text">
+                ${source}
+            </div>
+
+        </div>
+
+    `).join('');
+}
+
+function scrollBottom(){
+
+    const area =
+        document.getElementById('chatArea');
+
+    area.scrollTop =
+        area.scrollHeight;
 }
 
 </script>
