@@ -3,56 +3,106 @@ import requests
 SESSION = requests.Session()
 
 
-def generate_answer(agent_output):
-    query = agent_output["query"]["expanded_query"]
-    intent = agent_output["query"].get("intent", "factual")
+# -----------------------------------
+# 🔹 BUILD CONTEXT
+# -----------------------------------
+def build_context(docs, intent):
 
-    # 🔥 Use top 2 chunks (BIG improvement)
+    if not docs:
+        return ""
+
+    # 🔥 Dynamic context sizing
+    if intent == "exploratory":
+        max_docs = 3
+
+    elif intent == "comparison":
+        max_docs = 2
+
+    else:
+        max_docs = 1
+
+    selected_docs = docs[:max_docs]
+
+    # 🔥 Limit noisy long context
+    context = "\n\n".join(
+        d[:1200] for d in selected_docs
+    )
+
+    return context.strip()
+
+
+# -----------------------------------
+# 🔹 ANSWER GENERATION
+# -----------------------------------
+def generate_answer(agent_output):
+
+    query = agent_output["query"]["expanded_query"]
+
+    intent = agent_output["query"].get(
+        "intent",
+        "factual"
+    )
+
     docs = agent_output["context"]
-    context = "\n".join(docs[:2])[:1200]
+
+    # 🔥 Improved context builder
+    context = build_context(docs, intent)
 
     prompt = f"""
 You are an oncology AI assistant.
 
-Query Type: {intent}
+You MUST answer ONLY using the provided medical context.
 
 STRICT RULES:
-- Answer ONLY using the given context
-- DO NOT hallucinate or use outside knowledge
-- If answer is not in context → say "Not enough information"
-- DO NOT include thinking text, reasoning tags, or <unused*> tokens
+- Do NOT use outside knowledge
+- Do NOT hallucinate
+- Do NOT invent treatments or symptoms
+- If answer is missing from context, say:
+  "Not enough information in retrieved medical context."
+
+- Avoid generic filler
+- Avoid repeating the question
+- Avoid unnecessary explanations
+- Keep answers medically focused
 
 USER REQUIREMENT:
-- Answer MUST directly answer the question
-- Do NOT include unrelated info (e.g., treatment if question asks symptoms)
-- Keep strictly relevant
-- Keep points short and clear
-- 3–6 points maximum
+- Directly answer the question
+- Use concise bullet points
+- Keep only relevant medical details
+- Maximum 3–6 points
+- No markdown formatting
+- No reasoning tags
+- No chain-of-thought
+- No XML tags
+- No <unused*> tokens
+- Important: Do NOT say "Based on the retrieved documents..." or similar phrases.
+- The answer should be a straightforward response to the user's question, strictly based on the provided medical context.
 
-FORMAT BASED ON QUERY:
+FORMAT RULES:
 
 If factual:
 - point 1
 - point 2
 
 If comparison:
-- Feature 1: ...
-- Feature 2: ...
+- Feature A: ...
+- Feature B: ...
 
 If exploratory:
 - Explanation point 1
 - Explanation point 2
 
-Context:
+MEDICAL CONTEXT:
 {context}
 
-Question:
+QUESTION:
 {query}
 
-Answer:
+FINAL ANSWER:
 """
 
     try:
+
         response = SESSION.post(
             "http://localhost:11434/api/generate",
             json={
@@ -60,17 +110,58 @@ Answer:
                 "prompt": prompt,
                 "stream": False,
                 "options": {
-                    "temperature": 0,
+                    # 🔥 lower hallucination
+                    "temperature": 0.1,
+
+                    # 🔥 more focused output
                     "top_p": 0.9,
-                    "num_predict": 200,
-                    "keep_alive": "10m"
+
+                    # 🔥 concise answer
+                    "num_predict": 220,
+
+                    # 🔥 prevent reload
+                    "keep_alive": "30m",
+
+                    # 🔥 reduce repetition
+                    "repeat_penalty": 1.1
                 }
             },
-            timeout=60
+            timeout=90
         )
 
-        return response.json().get("response", "").strip()
+        answer = response.json().get(
+            "response",
+            ""
+        ).strip()
+
+        # -----------------------------------
+        # 🔹 CLEANUP
+        # -----------------------------------
+
+        # remove extra blank lines
+        answer = answer.replace("\n\n\n", "\n\n")
+
+        # remove weird tokens
+        bad_tokens = [
+            "<unused0>",
+            "<unused1>",
+            "<think>",
+            "</think>"
+        ]
+
+        for token in bad_tokens:
+            answer = answer.replace(token, "")
+
+        answer = answer.strip()
+
+        # 🔥 Empty fallback
+        if len(answer) < 15:
+            return "Not enough information in retrieved medical context."
+
+        return answer
 
     except Exception as e:
+
         print("❌ Generator error:", e)
-        return "Not enough information"
+
+        return "Not enough information in retrieved medical context."

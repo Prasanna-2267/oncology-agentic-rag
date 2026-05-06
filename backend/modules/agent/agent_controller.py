@@ -7,45 +7,74 @@ from modules.agent.memory import AgentMemory
 
 def agent_decision(laqa_output):
     """
-    Main agent loop:
-    - Retrieval
-    - Generation
-    - Evaluation
-    - Strategy (retry / accept)
+    Main Agentic RAG Loop
+
+    Steps:
+    1. Retrieval
+    2. Generation
+    3. Evaluation
+    4. Retry Strategy
     """
 
     memory = AgentMemory()
-    max_attempts = 3
+
+    # 🔥 Reduced retries (faster + stable)
+    max_attempts = 2
+
+    last_answer = ""
+    last_docs = []
+    last_doc_ids = []
+    last_eval = {}
 
     for attempt in range(max_attempts):
 
         print(f"\n🔁 ATTEMPT {attempt + 1}")
 
-        # -------------------------------
-        # 🔹 Retrieval (UPDATED)
-        # -------------------------------
-        retrieval_result = hybrid_search(laqa_output, None)
+        # -----------------------------------
+        # 🔹 Retrieval
+        # -----------------------------------
+        retrieval_result = hybrid_search(
+            laqa_output,
+            None
+        )
 
         docs = retrieval_result.get("texts", [])
+
         doc_ids = retrieval_result.get("ids", [])
 
+        retrieval_score = retrieval_result.get(
+            "retrieval_score",
+            0.5
+        )
+
+        # -----------------------------------
+        # 🔹 Empty Retrieval Handling
+        # -----------------------------------
         if not docs:
+
             print("⚠️ No documents retrieved")
+
             return {
-                "answer": "I don’t have enough information to answer this.",
+                "answer": "I don’t have enough medical information to answer this question.",
                 "docs": [],
                 "doc_ids": [],
-                "eval": {"score": 2, "confidence": 0.3, "needs_retry": True}
+                "eval": {
+                    "score": 2,
+                    "confidence": 0.3,
+                    "needs_retry": True,
+                    "retrieval_score": 0
+                }
             }
 
-        # -------------------------------
+        # -----------------------------------
         # 🔹 Context Optimization
-        # -------------------------------
-        context = docs[0][:800] if docs else ""
+        # -----------------------------------
+        # 🔥 cleaner eval context
+        context = "\n".join(docs[:2])[:1500]
 
-        # -------------------------------
+        # -----------------------------------
         # 🔹 Generation
-        # -------------------------------
+        # -----------------------------------
         agent_input = {
             "query": laqa_output,
             "context": docs
@@ -53,38 +82,60 @@ def agent_decision(laqa_output):
 
         answer = generate_answer(agent_input)
 
-        # -------------------------------
+        # -----------------------------------
+        # 🔹 Empty / Weak Answer Handling
+        # -----------------------------------
+        if len(answer.strip()) < 20:
+
+            answer = (
+                "Not enough information in retrieved medical context."
+            )
+
+        # -----------------------------------
         # 🔹 Evaluation
-        # -------------------------------
+        # -----------------------------------
         eval_result = evaluate_answer(
             laqa_output["expanded_query"],
             context,
             answer
         )
 
+        # 🔥 Inject retrieval score
+        eval_result["retrieval_score"] = retrieval_score
+
         print("EVAL:", eval_result)
 
-        # -------------------------------
-        # 🔹 Memory (optional logging)
-        # -------------------------------
+        # -----------------------------------
+        # 🔹 Memory Logging
+        # -----------------------------------
         memory.add({
-            "attempt": attempt,
+            "attempt": attempt + 1,
             "query": laqa_output["expanded_query"],
             "score": eval_result.get("score"),
-            "answer": answer[:150]
+            "confidence": eval_result.get("confidence"),
+            "retrieval_score": retrieval_score,
+            "answer": answer[:200]
         })
 
-        # -------------------------------
-        # 🔹 Strategy Decision
-        # -------------------------------
-        action = choose_strategy(eval_result, attempt)
+        # -----------------------------------
+        # 🔹 Save Last Valid State
+        # -----------------------------------
+        last_answer = answer
+        last_docs = docs
+        last_doc_ids = doc_ids
+        last_eval = eval_result
 
-        print("ACTION:", action)
+        # -----------------------------------
+        # 🔹 Early Accept (FAST PATH)
+        # -----------------------------------
+        if (
+            eval_result.get("score", 0) >= 8
+            and retrieval_score > 0.55
+            and len(answer.split()) > 15
+        ):
 
-        # -------------------------------
-        # 🔹 ACTION HANDLING
-        # -------------------------------
-        if action == "accept":
+            print("⚡ Early high-quality acceptance")
+
             return {
                 "answer": answer,
                 "docs": docs,
@@ -92,27 +143,58 @@ def agent_decision(laqa_output):
                 "eval": eval_result
             }
 
-        elif action == "expand_query":
-            # 🔥 Controlled expansion (no explosion)
-            laqa_output["expanded_query"] = (
-                laqa_output["expanded_query"] +
-                " detailed clinical explanation mechanisms latest treatment"
-            )[:300]
+        # -----------------------------------
+        # 🔹 Strategy Decision
+        # -----------------------------------
+        action = choose_strategy(
+            eval_result,
+            attempt
+        )
 
-        elif action == "increase_k":
-            laqa_output["retrieval_k"] = min(
-                laqa_output.get("retrieval_k", 5) + 2,
-                8
+        print("ACTION:", action)
+
+        # -----------------------------------
+        # 🔹 ACTIONS
+        # -----------------------------------
+        if action == "accept":
+
+            return {
+                "answer": answer,
+                "docs": docs,
+                "doc_ids": doc_ids,
+                "eval": eval_result
+            }
+
+        # -----------------------------------
+        # 🔹 Query Expansion
+        # -----------------------------------
+        elif action == "expand_query":
+
+            expanded = (
+                laqa_output["expanded_query"]
+                + " detailed clinical explanation symptoms diagnosis treatment"
             )
 
-    # -------------------------------
-    # 🔹 Fallback (max attempts reached)
-    # -------------------------------
+            laqa_output["expanded_query"] = expanded[:350]
+
+        # -----------------------------------
+        # 🔹 Retrieval Expansion
+        # -----------------------------------
+        elif action == "increase_k":
+
+            laqa_output["retrieval_k"] = min(
+                laqa_output.get("retrieval_k", 5) + 2,
+                10
+            )
+
+    # -----------------------------------
+    # 🔹 Max Attempts Fallback
+    # -----------------------------------
     print("\n⚠️ Max attempts reached")
 
     return {
-        "answer": answer,
-        "docs": docs,
-        "doc_ids": doc_ids,
-        "eval": eval_result
+        "answer": last_answer,
+        "docs": last_docs,
+        "doc_ids": last_doc_ids,
+        "eval": last_eval
     }

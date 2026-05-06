@@ -4,51 +4,173 @@ import re
 
 SESSION = requests.Session()
 
+OLLAMA_URL = "http://localhost:11434/api/generate"
 
-# -------------------------------
+MODEL = "phi3:mini"
+
+
+# -----------------------------------
 # 🔹 Robust JSON Extraction
-# -------------------------------
+# -----------------------------------
 def extract_json(output):
     """
     Extract valid JSON from messy LLM output
     """
-    matches = re.findall(r"\{.*?\}", output, re.DOTALL)
+
+    matches = re.findall(
+        r"\{.*?\}",
+        output,
+        re.DOTALL
+    )
 
     for m in matches:
+
         try:
             return json.loads(m)
+
         except:
             continue
 
     raise ValueError("No valid JSON found")
 
 
-# -------------------------------
-# 🔹 Query Processing (LAQA)
-# -------------------------------
+# -----------------------------------
+# 🔹 Query Cleaner
+# -----------------------------------
+def clean_query(text):
+
+    text = text.lower().strip()
+
+    # remove excessive spaces
+    text = re.sub(r"\s+", " ", text)
+
+    # basic spelling fixes
+    fixes = {
+        "symtoms": "symptoms",
+        "tretment": "treatment",
+        "diagnsis": "diagnosis",
+        "chemo therapy": "chemotherapy",
+        "immuno therapy": "immunotherapy",
+    }
+
+    for wrong, correct in fixes.items():
+        text = text.replace(wrong, correct)
+
+    return text
+
+
+# -----------------------------------
+# 🔹 Intent-aware Enrichment
+# -----------------------------------
+def enrich_query(query, intent):
+
+    query = clean_query(query)
+
+    # factual
+    if intent == "factual":
+
+        extra = (
+            " symptoms signs causes diagnosis clinical features"
+        )
+
+    # comparison
+    elif intent == "comparison":
+
+        extra = (
+            " comparison differences advantages disadvantages effectiveness risks"
+        )
+
+    # exploratory
+    else:
+
+        extra = (
+            " detailed clinical explanation mechanisms pathology treatment latest advances"
+        )
+
+    # 🔥 Avoid duplicate expansion
+    existing = set(query.split())
+
+    extra_words = [
+        w for w in extra.split()
+        if w not in existing
+    ]
+
+    enriched = (
+        query + " " + " ".join(extra_words)
+    ).strip()
+
+    return enriched[:350]
+
+
+# -----------------------------------
+# 🔹 Dynamic Retrieval K
+# -----------------------------------
+def choose_k(intent):
+
+    if intent == "exploratory":
+        return 8
+
+    elif intent == "comparison":
+        return 6
+
+    return 5
+
+
+# -----------------------------------
+# 🔹 Weak Query Detection
+# -----------------------------------
+def improve_weak_query(query):
+
+    words = query.split()
+
+    if len(words) <= 3:
+
+        extra = (
+            " symptoms causes diagnosis treatment"
+        )
+
+        existing = set(words)
+
+        extra_words = [
+            w for w in extra.split()
+            if w not in existing
+        ]
+
+        query += " " + " ".join(extra_words)
+
+    return query.strip()
+
+
+# -----------------------------------
+# 🔹 MAIN QUERY PROCESSOR
+# -----------------------------------
 def process_query(query):
 
-    query = query.strip()
+    query = clean_query(query)
 
     prompt = f"""
-You are a query analysis system.
+You are a medical query analysis system.
 
-Your job is ONLY to:
-1. Classify the query into:
+Your tasks:
+1. Detect intent:
    - factual
    - comparison
    - exploratory
 
-2. Extract keywords
-3. Rewrite query for better retrieval
+2. Extract important medical keywords
 
-IMPORTANT:
-- DO NOT reject the query
-- DO NOT say "outside scope"
-- ALWAYS return JSON
-- DO NOT include any extra text
+3. Rewrite the query for medical document retrieval.
 
-Return ONLY valid JSON:
+STRICT RULES:
+- ONLY return valid JSON
+- No markdown
+- No explanations
+- No extra text
+- Do NOT reject queries
+- Do NOT hallucinate diseases or treatments
+- Keep retrieval query medically relevant
+
+JSON FORMAT:
 
 {{
   "intent": "factual | comparison | exploratory",
@@ -56,34 +178,48 @@ Return ONLY valid JSON:
   "expanded_query": "..."
 }}
 
-Query:
+USER QUERY:
 {query}
 """
 
     try:
+
         response = SESSION.post(
-            "http://localhost:11434/api/generate",
+            OLLAMA_URL,
             json={
-                "model": "medgemma-rag",
+                "model": MODEL,
+
                 "prompt": prompt,
+
                 "stream": False,
+
                 "options": {
                     "temperature": 0,
-                    "keep_alive": "10m"
+
+                    "top_p": 0.9,
+
+                    "num_predict": 180,
+
+                    "keep_alive": "30m"
                 }
             },
-            timeout=120
+            timeout=60
         )
 
         data = response.json()
-        output = data.get("response", "").strip()
 
-        print("\n🧠 LAQA RAW OUTPUT:\n", output)
+        output = data.get(
+            "response",
+            ""
+        ).strip()
 
-        # 🔥 Use robust extractor
+        print("\n🧠 LAQA RAW OUTPUT:\n")
+        print(output)
+
         parsed = extract_json(output)
 
     except Exception as e:
+
         print("⚠️ LAQA fallback:", e)
 
         parsed = {
@@ -92,40 +228,71 @@ Query:
             "expanded_query": query
         }
 
-    # -------------------------------
-    # 🔹 Normalize + Improve Query
-    # -------------------------------
-    intent = parsed.get("intent", "factual")
-    expanded_query = parsed.get("expanded_query", query)
+    # -----------------------------------
+    # 🔹 Normalize Intent
+    # -----------------------------------
+    intent = parsed.get(
+        "intent",
+        "factual"
+    ).lower()
 
-    # 🔥 Clean query
-    expanded_query = expanded_query.lower().strip()
+    if intent not in [
+        "factual",
+        "comparison",
+        "exploratory"
+    ]:
+        intent = "factual"
 
-    # 🔥 Improve weak queries (VERY IMPORTANT)
-    if len(expanded_query.split()) <= 3:
-        expanded_query += " symptoms causes diagnosis treatment"
+    # -----------------------------------
+    # 🔹 Query Expansion
+    # -----------------------------------
+    expanded_query = parsed.get(
+        "expanded_query",
+        query
+    )
 
-    # 🔥 Handle spelling issues lightly
-    if "symtoms" in expanded_query:
-        expanded_query = expanded_query.replace("symtoms", "symptoms")
+    expanded_query = clean_query(
+        expanded_query
+    )
 
-    parsed["expanded_query"] = expanded_query
+    expanded_query = improve_weak_query(
+        expanded_query
+    )
 
-    # -------------------------------
-    # 🔹 Dynamic retrieval_k
-    # -------------------------------
-    if intent == "exploratory":
-        parsed["retrieval_k"] = 7
-    elif intent == "comparison":
-        parsed["retrieval_k"] = 6
-    else:
-        parsed["retrieval_k"] = 5
+    expanded_query = enrich_query(
+        expanded_query,
+        intent
+    )
 
-    parsed["original_query"] = query
+    # -----------------------------------
+    # 🔹 Final Output
+    # -----------------------------------
+    final_output = {
 
-    # -------------------------------
-    # 🔹 Debug
-    # -------------------------------
-    print("LAQA PARSED:", parsed)
+        "intent": intent,
 
-    return parsed
+        "keywords": parsed.get(
+            "keywords",
+            []
+        ),
+
+        "expanded_query": expanded_query,
+
+        "retrieval_k": choose_k(intent),
+
+        "original_query": query
+    }
+
+    # -----------------------------------
+    # 🔹 DEBUG
+    # -----------------------------------
+    print("\n🧠 LAQA PARSED:")
+
+    print(
+        json.dumps(
+            final_output,
+            indent=2
+        )
+    )
+
+    return final_output
